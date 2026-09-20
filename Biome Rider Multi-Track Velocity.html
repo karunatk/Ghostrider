@@ -1,0 +1,1403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Biome Rider: Multi-Track Velocity</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;600;700&display=swap');
+
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            background-color: #090a0f;
+            color: #ffffff;
+            overflow: hidden;
+        }
+
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+        }
+
+        .btn-action {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-action:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 0 25px rgba(59, 130, 246, 0.7);
+        }
+
+        .btn-action:active {
+            transform: translateY(1px) scale(0.98);
+        }
+
+        .btn-nitro {
+            background: linear-gradient(135deg, #f97316 0%, #dc2626 100%);
+            box-shadow: 0 0 20px rgba(249, 115, 22, 0.5);
+        }
+
+        .btn-nitro:hover {
+            box-shadow: 0 0 30px rgba(249, 115, 22, 0.8);
+        }
+
+        /* Keyframe animations for HUD effects */
+        @keyframes pulse-glow {
+            0%, 100% { filter: drop-shadow(0 0 5px rgba(234, 179, 8, 0.6)); }
+            50% { filter: drop-shadow(0 0 15px rgba(234, 179, 8, 1)); }
+        }
+
+        .glow-coin {
+            animation: pulse-glow 1.5s infinite;
+        }
+
+        /* Touch control button highlights */
+        .touch-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1.5px solid rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(4px);
+            transition: background 0.1s;
+        }
+        .touch-btn:active, .touch-btn.active {
+            background: rgba(59, 130, 246, 0.4);
+            border-color: #60a5fa;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative flex items-center justify-center">
+
+    <canvas id="gameCanvas" class="absolute inset-0 w-full h-full block z-0"></canvas>
+
+    <div id="hud" class="absolute inset-0 z-10 pointer-events-none hidden flex flex-col justify-between p-4 md:p-6">
+        <!-- Top Stats Bar -->
+        <div class="flex justify-between items-start w-full">
+            <!-- Left: Distance & Biome Info -->
+            <div class="glass-panel px-4 py-2.5 rounded-2xl flex flex-col gap-1 min-w-[180px]">
+                <div class="flex items-center justify-between text-xs font-semibold text-slate-400">
+                    <span id="biomeLabel" class="font-orbitron uppercase text-amber-400 tracking-wider">Dense Jungle</span>
+                    <span id="biomeDist">0 / 1000m</span>
+                </div>
+                <!-- Biome Progress Bar -->
+                <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700/50">
+                    <div id="biomeProgressBar" class="bg-gradient-to-r from-amber-500 to-emerald-400 h-full w-0 transition-all duration-300"></div>
+                </div>
+                <div class="text-2xl font-orbitron font-bold text-white tracking-wide mt-0.5">
+                    <span id="distVal">0</span> <span class="text-xs font-normal text-slate-400">m</span>
+                </div>
+            </div>
+
+            <!-- Middle: Score & Multiplier -->
+            <div class="glass-panel px-6 py-2 rounded-2xl flex flex-col items-center">
+                <span class="text-xs text-slate-400 font-semibold uppercase tracking-wider">SCORE</span>
+                <span id="scoreVal" class="text-3xl font-orbitron font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">0</span>
+                <div id="multiplierTag" class="text-xs font-bold text-yellow-400 opacity-0 transition-opacity">2x MULTIPLIER!</div>
+            </div>
+
+            <!-- Right: Coins & Active Powerups -->
+            <div class="glass-panel px-4 py-2.5 rounded-2xl flex flex-col items-end gap-1 min-w-[150px]">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-coins text-amber-400 text-lg glow-coin"></i>
+                    <span id="coinVal" class="text-2xl font-orbitron font-bold text-amber-300">0</span>
+                </div>
+                <div id="powerupStatus" class="flex gap-1.5 mt-1">
+                    <!-- Powerup icons injected dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Middle Overlay Messages (Biome Switch, Ramp Trick) -->
+        <div class="self-center text-center pointer-events-none">
+            <div id="biomeBanner" class="text-3xl md:text-5xl font-orbitron font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-orange-400 to-red-500 opacity-0 transition-all duration-700 transform scale-75 drop-shadow-lg">
+                ENTERING CANYON MOUNTAINS
+            </div>
+            <div id="trickBanner" class="text-xl md:text-2xl font-orbitron font-bold text-cyan-300 opacity-0 transition-all duration-300 transform -translate-y-4">
+                AIR TIME +200!
+            </div>
+        </div>
+
+        <!-- Bottom Controls & Nitro Gauge -->
+        <div class="flex justify-between items-end w-full">
+            <!-- Speedometer & Nitro Meter -->
+            <div class="glass-panel p-3.5 rounded-2xl flex flex-col gap-2 w-48">
+                <div class="flex justify-between text-xs font-bold">
+                    <span class="text-slate-300"><i class="fa-solid fa-gauge-high mr-1"></i> SPEED</span>
+                    <span id="speedVal" class="text-cyan-400">0 KM/H</span>
+                </div>
+                <!-- Nitro Bar -->
+                <div class="flex flex-col gap-1">
+                    <div class="flex justify-between text-[10px] font-semibold text-orange-400">
+                        <span>NITRO BOOST</span>
+                        <span id="nitroPct">100%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 rounded-full h-3 p-0.5 border border-slate-700">
+                        <div id="nitroBar" class="bg-gradient-to-r from-amber-500 via-orange-500 to-red-600 h-full rounded-full w-full transition-all duration-100"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Layer Indicator -->
+            <div class="glass-panel px-4 py-2 rounded-xl flex items-center gap-3 text-xs font-semibold">
+                <span class="text-slate-400">PATH LAYER:</span>
+                <div class="flex gap-1.5" id="layerDots">
+                    <span class="w-3 h-3 rounded-full bg-slate-700 border border-slate-600" id="dotUpper" title="Upper Cantilever Path"></span>
+                    <span class="w-3 h-3 rounded-full bg-cyan-400 border border-cyan-300 shadow-[0_0_8px_#38bdf8]" id="dotMain" title="Main Track"></span>
+                    <span class="w-3 h-3 rounded-full bg-slate-700 border border-slate-600" id="dotLower" title="Lower Tunnel Path"></span>
+                </div>
+            </div>
+
+            <!-- On-Screen Action Hint or Pause Button -->
+            <button id="pauseBtn" class="glass-panel p-3 rounded-2xl pointer-events-auto hover:bg-slate-700/50 active:scale-95 transition">
+                <i class="fa-solid fa-pause text-xl text-white"></i>
+            </button>
+        </div>
+    </div>
+
+    <div id="touchControls" class="absolute inset-0 z-20 pointer-events-none hidden flex flex-col justify-end p-4">
+        <div class="flex justify-between items-end w-full mb-2">
+            <!-- D-Pad Move Layer / Jump -->
+            <div class="flex flex-col gap-2 pointer-events-auto">
+                <button id="btnUp" class="touch-btn w-16 h-16 rounded-2xl flex items-center justify-center text-white text-2xl active:bg-blue-600/50">
+                    <i class="fa-solid fa-chevron-up"></i>
+                </button>
+                <button id="btnDown" class="touch-btn w-16 h-16 rounded-2xl flex items-center justify-center text-white text-2xl active:bg-blue-600/50">
+                    <i class="fa-solid fa-chevron-down"></i>
+                </button>
+            </div>
+
+            <!-- Action Buttons: Jump & Nitro -->
+            <div class="flex gap-3 pointer-events-auto">
+                <button id="btnNitro" class="touch-btn btn-nitro w-20 h-20 rounded-3xl flex flex-col items-center justify-center text-white font-orbitron font-bold text-xs gap-1 active:scale-95">
+                    <i class="fa-solid fa-fire text-2xl"></i>
+                    NITRO
+                </button>
+                <button id="btnJump" class="touch-btn w-20 h-20 rounded-3xl flex flex-col items-center justify-center text-white font-orbitron font-bold text-xs gap-1 active:scale-95 bg-blue-600/60 border-blue-400">
+                    <i class="fa-solid fa-angles-up text-2xl"></i>
+                    JUMP
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="startModal" class="absolute z-30 inset-0 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+        <div class="glass-panel max-w-lg w-full p-6 md:p-8 rounded-3xl flex flex-col items-center text-center gap-6 relative overflow-hidden border border-slate-700/80">
+            <!-- Background Glow Decor -->
+            <div class="absolute -top-24 -left-24 w-48 h-48 bg-blue-500/20 rounded-full blur-3xl"></div>
+            <div class="absolute -bottom-24 -right-24 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl"></div>
+
+            <!-- Game Logo Title -->
+            <div class="flex flex-col items-center">
+                <div class="flex items-center gap-2 text-amber-400 font-orbitron text-xs tracking-widest uppercase">
+                    <i class="fa-solid fa-motorcycle"></i> Extreme Terrain Cycling
+                </div>
+                <h1 class="text-4xl md:text-5xl font-orbitron font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-500 to-cyan-400 tracking-tight mt-1">
+                    BIOME RIDER
+                </h1>
+                <p class="text-sm text-slate-400 mt-1">Multi-Track Velocity Adventure</p>
+            </div>
+
+            <!-- Key Features Preview Cards -->
+            <div class="grid grid-cols-3 gap-2 w-full text-left text-xs">
+                <div class="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50 flex flex-col gap-1">
+                    <i class="fa-solid fa-layer-group text-cyan-400 text-sm"></i>
+                    <span class="font-bold text-slate-200">3 Road Layers</span>
+                    <span class="text-[10px] text-slate-400">Switch paths up/down</span>
+                </div>
+                <div class="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50 flex flex-col gap-1">
+                    <i class="fa-solid fa-mountain-sun text-amber-400 text-sm"></i>
+                    <span class="font-bold text-slate-200">5 Biomes</span>
+                    <span class="text-[10px] text-slate-400">Seamless transitions</span>
+                </div>
+                <div class="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50 flex flex-col gap-1">
+                    <i class="fa-solid fa-bolt text-orange-400 text-sm"></i>
+                    <span class="font-bold text-slate-200">Nitro & Tricks</span>
+                    <span class="text-[10px] text-slate-400">Ramps & stunts</span>
+                </div>
+            </div>
+
+            <!-- Controls Quick Guide -->
+            <div class="w-full bg-slate-900/80 p-3 rounded-2xl border border-slate-800 text-xs text-slate-300 flex justify-around">
+                <div class="flex items-center gap-1.5"><kbd class="bg-slate-700 px-2 py-0.5 rounded text-[10px] font-mono">W / ↑</kbd> Move Up</div>
+                <div class="flex items-center gap-1.5"><kbd class="bg-slate-700 px-2 py-0.5 rounded text-[10px] font-mono">S / ↓</kbd> Move Down</div>
+                <div class="flex items-center gap-1.5"><kbd class="bg-slate-700 px-2 py-0.5 rounded text-[10px] font-mono">SPACE</kbd> Jump</div>
+                <div class="flex items-center gap-1.5"><kbd class="bg-slate-700 px-2 py-0.5 rounded text-[10px] font-mono">SHIFT</kbd> Nitro</div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-3 w-full">
+                <button id="garageBtn" class="flex-1 py-3.5 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-600 font-orbitron font-bold text-sm text-slate-200 transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-warehouse text-amber-400"></i> GARAGE
+                </button>
+                <button id="startPlayBtn" class="flex-[2] btn-action py-3.5 px-6 rounded-2xl font-orbitron font-bold text-base text-white flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-play"></i> START RIDE
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="garageModal" class="absolute z-30 inset-0 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md hidden">
+        <div class="glass-panel max-w-2xl w-full p-6 rounded-3xl flex flex-col gap-6 border border-slate-700">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-4">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-warehouse text-2xl text-amber-400"></i>
+                    <h2 class="text-2xl font-orbitron font-bold text-white">BIKE GARAGE</h2>
+                </div>
+                <div class="flex items-center gap-2 text-amber-400 font-orbitron font-bold">
+                    <i class="fa-solid fa-coins"></i>
+                    <span id="garageCoins">0</span>
+                </div>
+            </div>
+
+            <!-- Bike Selection Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" id="bikeList">
+                <!-- Bike items dynamically injected by JS -->
+            </div>
+
+            <button id="closeGarageBtn" class="self-end px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-orbitron font-semibold text-sm text-slate-300">
+                BACK TO MENU
+            </button>
+        </div>
+    </div>
+
+    <div id="gameOverModal" class="absolute z-30 inset-0 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md hidden">
+        <div class="glass-panel max-w-md w-full p-6 md:p-8 rounded-3xl flex flex-col items-center text-center gap-5 border border-red-900/50 shadow-red-950/50">
+            <div class="w-16 h-16 rounded-full bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-500 text-3xl">
+                <i class="fa-solid fa-burst"></i>
+            </div>
+
+            <h2 class="text-3xl font-orbitron font-black text-white">CRASHED!</h2>
+
+            <div class="w-full bg-slate-900/80 p-4 rounded-2xl flex flex-col gap-3 border border-slate-800 text-sm">
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Distance Travelled:</span>
+                    <span id="endDist" class="font-orbitron font-bold text-amber-400">0 m</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Coins Collected:</span>
+                    <span id="endCoins" class="font-orbitron font-bold text-yellow-300">0</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-400">Final Score:</span>
+                    <span id="endScore" class="font-orbitron font-bold text-cyan-400 text-base">0</span>
+                </div>
+                <div class="flex justify-between border-t border-slate-800 pt-2 text-xs">
+                    <span class="text-slate-500">Best Distance:</span>
+                    <span id="bestDist" class="font-orbitron font-semibold text-slate-300">0 m</span>
+                </div>
+            </div>
+
+            <div class="flex gap-3 w-full">
+                <button id="restartBtn" class="flex-1 btn-action py-3.5 px-4 rounded-2xl font-orbitron font-bold text-sm text-white flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-rotate-right"></i> RIDE AGAIN
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class AudioSynth {
+            constructor() {
+                this.ctx = null;
+                this.engineOsc = null;
+                this.engineGain = null;
+                this.isMuted = false;
+            }
+
+            init() {
+                if (this.ctx) return;
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                this.ctx = new AudioCtx();
+                this.startEngineSound();
+            }
+
+            startEngineSound() {
+                if (!this.ctx) return;
+                try {
+                    this.engineOsc = this.ctx.createOscillator();
+                    this.engineGain = this.ctx.createGain();
+                    
+                    this.engineOsc.type = 'sawtooth';
+                    this.engineOsc.frequency.setValueAtTime(60, this.ctx.currentTime);
+                    
+                    this.engineGain.gain.setValueAtTime(0.02, this.ctx.currentTime);
+                    
+                    this.engineOsc.connect(this.engineGain);
+                    this.engineGain.connect(this.ctx.destination);
+                    this.engineOsc.start();
+                } catch(e) {}
+            }
+
+            updateEnginePitch(speedRatio) {
+                if (!this.ctx || !this.engineOsc) return;
+                const targetFreq = 50 + speedRatio * 180;
+                this.engineOsc.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 0.1);
+            }
+
+            playCoin() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(987.77, this.ctx.currentTime); // B5
+                osc.frequency.setValueAtTime(1318.51, this.ctx.currentTime + 0.08); // E6
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.25);
+            }
+
+            playJump() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(450, this.ctx.currentTime + 0.2);
+                gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.2);
+            }
+
+            playNitro() {
+                if (!this.ctx) return;
+                const bufferSize = this.ctx.sampleRate * 0.4;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(800, this.ctx.currentTime);
+                filter.Q.setValueAtTime(3, this.ctx.currentTime);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start();
+            }
+
+            playCrash() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(120, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 0.5);
+                gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.5);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.5);
+            }
+        }
+
+        const BIOMES = [
+            {
+                id: 'jungle',
+                name: 'Dense Jungle Forest',
+                length: 1000,
+                skyTop: '#082f1e',
+                skyBottom: '#134e4a',
+                fogColor: 'rgba(19, 78, 74, 0.4)',
+                groundColor: '#14532d',
+                roadMain: '#3f2e18',
+                roadUpper: '#5c4033',
+                roadLower: '#1e293b',
+                accentColor: '#10b981',
+                bgParallax: ['treesFar', 'treesNear', 'vines'],
+                obstacles: ['log', 'boulder', 'mud'],
+                particleType: 'leaf'
+            },
+            {
+                id: 'canyon',
+                name: 'Canyon Mountains',
+                length: 1000,
+                skyTop: '#451a03',
+                skyBottom: '#9a3412',
+                fogColor: 'rgba(154, 52, 18, 0.35)',
+                groundColor: '#7c2d12',
+                roadMain: '#78350f',
+                roadUpper: '#b45309',
+                roadLower: '#292524',
+                accentColor: '#f97316',
+                bgParallax: ['mountainsFar', 'canyonRocks'],
+                obstacles: ['rockslide', 'cactus', 'crate'],
+                particleType: 'dust'
+            },
+            {
+                id: 'bridge',
+                name: 'Cantilever Bridge',
+                length: 1000,
+                skyTop: '#0f172a',
+                skyBottom: '#1e1b4b',
+                fogColor: 'rgba(30, 27, 75, 0.4)',
+                groundColor: '#0284c7',
+                roadMain: '#334155',
+                roadUpper: '#475569',
+                roadLower: '#0f172a',
+                accentColor: '#38bdf8',
+                bgParallax: ['citySkyline', 'steelTruss'],
+                obstacles: ['cone', 'barrier', 'oil'],
+                particleType: 'spark'
+            },
+            {
+                id: 'tunnel',
+                name: 'Crystal Cavern',
+                length: 1000,
+                skyTop: '#090514',
+                skyBottom: '#2e1065',
+                fogColor: 'rgba(46, 16, 101, 0.5)',
+                groundColor: '#3b0764',
+                roadMain: '#1e1b4b',
+                roadUpper: '#312e81',
+                roadLower: '#090514',
+                accentColor: '#c084fc',
+                bgParallax: ['cavernWalls', 'glowingCrystals'],
+                obstacles: ['stalagmite', 'spikes', 'laser'],
+                particleType: 'spore'
+            },
+            {
+                id: 'beach',
+                name: 'Beach Paradise Shore',
+                length: 1000,
+                skyTop: '#0284c7',
+                skyBottom: '#fda4af',
+                fogColor: 'rgba(253, 164, 175, 0.25)',
+                groundColor: '#fef08a',
+                roadMain: '#eab308',
+                roadUpper: '#78350f',
+                roadLower: '#0284c7',
+                accentColor: '#f43f5e',
+                bgParallax: ['oceanHorizon', 'palmTrees'],
+                obstacles: ['umbrella', 'driftwood', 'crab'],
+                particleType: 'spray'
+            }
+        ];
+
+        const BIKES = [
+            { id: 'dirt', name: 'Trail Blazer', color: '#10b981', secondary: '#f59e0b', price: 0, speed: 1.0, jump: 1.0, unlocked: true },
+            { id: 'cyber', name: 'Neon Cyber', color: '#06b6d4', secondary: '#ec4899', price: 250, speed: 1.25, jump: 1.1, unlocked: false },
+            { id: 'super', name: 'Apex Red Superbike', color: '#ef4444', secondary: '#ffffff', price: 600, speed: 1.45, jump: 1.25, unlocked: false },
+            { id: 'chopper', name: 'Thunder Chopper', color: '#f59e0b', secondary: '#1e293b', price: 1200, speed: 1.65, jump: 1.35, unlocked: false }
+        ];
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let synth = new AudioSynth();
+        let gameRunning = false;
+        let isPaused = false;
+
+        // Player Stats
+        let coins = parseInt(localStorage.getItem('br_coins') || '0');
+        let selectedBikeIndex = 0;
+        let totalDistance = 0;
+        let currentScore = 0;
+        let highDistance = parseInt(localStorage.getItem('br_high_dist') || '0');
+
+        // Path Layer Definitions (Y positions relative to horizon ground)
+        // 0: Upper Bridge, 1: Main Road, 2: Lower Tunnel Path
+        const PATH_LAYERS = [
+            { id: 0, name: 'Upper Path', offsetY: -110, color: '#64748b' },
+            { id: 1, name: 'Main Track', offsetY: 0, color: '#334155' },
+            { id: 2, name: 'Lower Path', offsetY: 100, color: '#1e293b' }
+        ];
+
+        // Rider Entity
+        let rider = {
+            x: 180,
+            y: 0,
+            targetY: 0,
+            layer: 1, // Start on Main Track
+            vy: 0,
+            isJumping: false,
+            rotation: 0,
+            wheelAngle: 0,
+            nitro: 100,
+            isBoosting: false,
+            invulnerableTimer: 0,
+            magnetTimer: 0,
+            shieldActive: false
+        };
+
+        let currentBiomeIndex = 0;
+        let gameSpeed = 7;
+        let baseSpeed = 7;
+        let cameraX = 0;
+
+        // Active game objects arrays
+        let obstacles = [];
+        let coinItems = [];
+        let powerups = [];
+        let particles = [];
+        let bgElements = [];
+        let rampNodes = [];
+
+        // Input Handling
+        let keys = {};
+        let touchState = { up: false, down: false, jump: false, nitro: false };
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Keyboard Controls
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (!gameRunning) return;
+
+            if ((e.code === 'KeyW' || e.code === 'ArrowUp') && rider.layer > 0) {
+                switchLayer(-1);
+            } else if ((e.code === 'KeyS' || e.code === 'ArrowDown') && rider.layer < 2) {
+                switchLayer(1);
+            }
+
+            if ((e.code === 'Space') && !rider.isJumping) {
+                performJump();
+            }
+
+            if (e.code === 'KeyP') {
+                togglePause();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        function setupTouchControls() {
+            const btnUp = document.getElementById('btnUp');
+            const btnDown = document.getElementById('btnDown');
+            const btnJump = document.getElementById('btnJump');
+            const btnNitro = document.getElementById('btnNitro');
+
+            const bindBtn = (elem, pressCallback, releaseCallback) => {
+                elem.addEventListener('touchstart', (e) => { e.preventDefault(); pressCallback(); });
+                elem.addEventListener('touchend', (e) => { e.preventDefault(); if (releaseCallback) releaseCallback(); });
+                elem.addEventListener('mousedown', (e) => { pressCallback(); });
+                elem.addEventListener('mouseup', (e) => { if (releaseCallback) releaseCallback(); });
+            };
+
+            bindBtn(btnUp, () => { if (gameRunning && rider.layer > 0) switchLayer(-1); });
+            bindBtn(btnDown, () => { if (gameRunning && rider.layer < 2) switchLayer(1); });
+            bindBtn(btnJump, () => { if (gameRunning && !rider.isJumping) performJump(); });
+            bindBtn(btnNitro, () => { touchState.nitro = true; }, () => { touchState.nitro = false; });
+        }
+        setupTouchControls();
+
+        function switchLayer(dir) {
+            rider.layer = Math.max(0, Math.min(2, rider.layer + dir));
+            updateLayerHUD();
+        }
+
+        function performJump() {
+            const currentBike = BIKES[selectedBikeIndex];
+            rider.vy = -14 * currentBike.jump;
+            rider.isJumping = true;
+            synth.playJump();
+        }
+
+        function updateLayerHUD() {
+            const dotUpper = document.getElementById('dotUpper');
+            const dotMain = document.getElementById('dotMain');
+            const dotLower = document.getElementById('dotLower');
+
+            const activeClass = "w-3 h-3 rounded-full bg-cyan-400 border border-cyan-300 shadow-[0_0_8px_#38bdf8]";
+            const inactiveClass = "w-3 h-3 rounded-full bg-slate-700 border border-slate-600";
+
+            dotUpper.className = rider.layer === 0 ? activeClass : inactiveClass;
+            dotMain.className = rider.layer === 1 ? activeClass : inactiveClass;
+            dotLower.className = rider.layer === 2 ? activeClass : inactiveClass;
+        }
+
+        function spawnWorldObjects() {
+            // Spawn obstacles
+            if (Math.random() < 0.025) {
+                const layer = Math.floor(Math.random() * 3);
+                const currentBiome = BIOMES[currentBiomeIndex];
+                const obsType = currentBiome.obstacles[Math.floor(Math.random() * currentBiome.obstacles.length)];
+
+                obstacles.push({
+                    x: canvas.width + 100,
+                    layer: layer,
+                    type: obsType,
+                    width: 40,
+                    height: 35
+                });
+            }
+
+            // Spawn Ramp (allows automatic launch to upper layer)
+            if (Math.random() < 0.008) {
+                const layer = Math.random() < 0.5 ? 1 : 2;
+                rampNodes.push({
+                    x: canvas.width + 100,
+                    layer: layer,
+                    width: 70,
+                    height: 30
+                });
+            }
+
+            // Spawn Coins
+            if (Math.random() < 0.05) {
+                const layer = Math.floor(Math.random() * 3);
+                const count = Math.floor(Math.random() * 4) + 2;
+                for (let i = 0; i < count; i++) {
+                    coinItems.push({
+                        x: canvas.width + 100 + (i * 35),
+                        layer: layer,
+                        offsetY: Math.sin(i * 0.5) * 15,
+                        collected: false
+                    });
+                }
+            }
+
+            // Spawn Powerups (Shield or Magnet)
+            if (Math.random() < 0.003) {
+                const layer = Math.floor(Math.random() * 3);
+                powerups.push({
+                    x: canvas.width + 100,
+                    layer: layer,
+                    type: Math.random() < 0.5 ? 'shield' : 'magnet',
+                    duration: 300
+                });
+            }
+        }
+
+        function createParticle(x, y, type) {
+            let color = '#38bdf8';
+            let size = Math.random() * 4 + 2;
+            let vx = (Math.random() - 0.5) * 4 - gameSpeed * 0.5;
+            let vy = (Math.random() - 0.5) * 4;
+            let life = 30 + Math.random() * 20;
+
+            if (type === 'leaf') color = ['#10b981', '#059669', '#34d399'][Math.floor(Math.random() * 3)];
+            else if (type === 'dust') color = ['#d97706', '#b45309', '#78350f'][Math.floor(Math.random() * 3)];
+            else if (type === 'nitro') {
+                color = ['#f97316', '#ef4444', '#facc15'][Math.floor(Math.random() * 3)];
+                vx = -gameSpeed - Math.random() * 5;
+                vy = (Math.random() - 0.5) * 3;
+                size = Math.random() * 6 + 3;
+            } else if (type === 'spark') color = '#fef08a';
+            else if (type === 'spore') color = '#c084fc';
+            else if (type === 'spray') color = '#7dd3fc';
+
+            particles.push({ x, y, vx, vy, color, size, life, maxLife: life });
+        }
+
+        function drawParallaxBackground() {
+            const currentBiome = BIOMES[currentBiomeIndex];
+            const nextBiome = BIOMES[(currentBiomeIndex + 1) % BIOMES.length];
+
+            // Distance inside current biome
+            const biomeDist = totalDistance % currentBiome.length;
+            const transitionZone = 150; // meters left before transition
+            let blend = 0;
+
+            if (biomeDist > currentBiome.length - transitionZone) {
+                blend = (biomeDist - (currentBiome.length - transitionZone)) / transitionZone;
+            }
+
+            // Interpolate Sky Gradient
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.7);
+            skyGrad.addColorStop(0, blendColors(currentBiome.skyTop, nextBiome.skyTop, blend));
+            skyGrad.addColorStop(1, blendColors(currentBiome.skyBottom, nextBiome.skyBottom, blend));
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Parallax Far Mountains / Silhouettes
+            const groundY = canvas.height * 0.55;
+            
+            // Layer 1: Distant Mountains
+            ctx.fillStyle = blendColors('#1e293b', '#0f172a', blend);
+            ctx.beginPath();
+            ctx.moveTo(0, groundY);
+            for (let x = 0; x <= canvas.width; x += 50) {
+                const hillH = Math.sin((x + cameraX * 0.1) * 0.005) * 80 + Math.cos((x + cameraX * 0.05) * 0.01) * 40;
+                ctx.lineTo(x, groundY - 100 - hillH);
+            }
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.lineTo(0, canvas.height);
+            ctx.fill();
+
+            // Layer 2: Midground Elements (Trees / Structures)
+            ctx.fillStyle = blendColors(currentBiome.groundColor, nextBiome.groundColor, blend);
+            ctx.beginPath();
+            ctx.moveTo(0, groundY);
+            for (let x = 0; x <= canvas.width; x += 30) {
+                const hillH = Math.sin((x + cameraX * 0.3) * 0.01) * 40;
+                ctx.lineTo(x, groundY - 30 - hillH);
+            }
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.lineTo(0, canvas.height);
+            ctx.fill();
+
+            // Ambient background floating particles
+            if (Math.random() < 0.3) {
+                createParticle(canvas.width, Math.random() * groundY, currentBiome.particleType);
+            }
+        }
+
+        function drawMultiLayerRoads() {
+            const groundY = canvas.height * 0.55;
+            const currentBiome = BIOMES[currentBiomeIndex];
+
+            PATH_LAYERS.forEach((layer) => {
+                const py = groundY + layer.offsetY;
+
+                // Draw Base Ground support or cantilever beams for Upper layer
+                if (layer.id === 0) { // Upper Cantilever Bridge Path
+                    ctx.strokeStyle = '#475569';
+                    ctx.lineWidth = 4;
+                    for (let x = - (cameraX % 60); x < canvas.width; x += 60) {
+                        ctx.beginPath();
+                        ctx.moveTo(x, py + 12);
+                        ctx.lineTo(x + 30, py + 45);
+                        ctx.lineTo(x + 60, py + 12);
+                        ctx.stroke();
+                    }
+                    ctx.fillStyle = currentBiome.roadUpper;
+                    ctx.fillRect(0, py, canvas.width, 14);
+                    // Metallic Railings
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.fillRect(0, py - 6, canvas.width, 3);
+                } else if (layer.id === 1) { // Main Road Track
+                    ctx.fillStyle = currentBiome.roadMain;
+                    ctx.fillRect(0, py, canvas.width, 18);
+                    // Road Center Dashed Line
+                    ctx.strokeStyle = '#fef08a';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([20, 15]);
+                    ctx.beginPath();
+                    ctx.moveTo(0, py + 9);
+                    ctx.lineTo(canvas.width, py + 9);
+                    ctx.stroke();
+                    ctx.setLineDash([]); // Reset dash
+                } else if (layer.id === 2) { // Lower Cavern/Subterranean Path
+                    ctx.fillStyle = currentBiome.roadLower;
+                    ctx.fillRect(0, py, canvas.width, 22);
+                    // Tunnel Overhead Arch outline
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(0, py - 40);
+                    ctx.lineTo(canvas.width, py - 40);
+                    ctx.stroke();
+                }
+            });
+        }
+
+        function drawWorldObjects() {
+            const groundY = canvas.height * 0.55;
+
+            // Draw Ramps
+            rampNodes.forEach((ramp) => {
+                const py = groundY + PATH_LAYERS[ramp.layer].offsetY;
+                ctx.fillStyle = '#f59e0b';
+                ctx.beginPath();
+                ctx.moveTo(ramp.x, py + 14);
+                ctx.lineTo(ramp.x + ramp.width, py - ramp.height);
+                ctx.lineTo(ramp.x + ramp.width, py + 14);
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = '#fef08a';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+
+            // Draw Obstacles
+            obstacles.forEach((obs) => {
+                const py = groundY + PATH_LAYERS[obs.layer].offsetY;
+
+                ctx.save();
+                ctx.translate(obs.x, py);
+
+                if (obs.type === 'log' || obs.type === 'driftwood') {
+                    ctx.fillStyle = '#78350f';
+                    ctx.beginPath();
+                    ctx.roundRect(0, -15, obs.width, obs.height, 5);
+                    ctx.fill();
+                    ctx.fillStyle = '#a16207';
+                    ctx.fillRect(5, -12, obs.width - 10, 4);
+                } else if (obs.type === 'boulder' || obs.type === 'rockslide') {
+                    ctx.fillStyle = '#57534e';
+                    ctx.beginPath();
+                    ctx.arc(obs.width / 2, -15, 18, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#78716c';
+                    ctx.beginPath();
+                    ctx.arc(obs.width / 2 - 4, -18, 8, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (obs.type === 'cone' || obs.type === 'barrier') {
+                    ctx.fillStyle = '#f97316';
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(obs.width / 2, -30);
+                    ctx.lineTo(obs.width, 0);
+                    ctx.closePath();
+                    ctx.fill();
+                    // White stripe
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(obs.width * 0.3, -18, obs.width * 0.4, 6);
+                } else if (obs.type === 'spikes' || obs.type === 'stalagmite') {
+                    ctx.fillStyle = '#c084fc';
+                    for (let i = 0; i < 3; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(i * 12, 0);
+                        ctx.lineTo(i * 12 + 6, -28);
+                        ctx.lineTo(i * 12 + 12, 0);
+                        ctx.fill();
+                    }
+                } else { // Default fallback box
+                    ctx.fillStyle = '#ef4444';
+                    ctx.fillRect(0, -20, obs.width, 20);
+                }
+
+                ctx.restore();
+            });
+
+            // Draw Coins
+            coinItems.forEach((coin) => {
+                if (coin.collected) return;
+                const py = groundY + PATH_LAYERS[coin.layer].offsetY + coin.offsetY;
+
+                ctx.save();
+                ctx.translate(coin.x, py - 15);
+                ctx.fillStyle = '#facc15';
+                ctx.shadowColor = '#eab308';
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(0, 0, 10, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#854d0e';
+                ctx.font = 'bold 11px Orbitron';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('$', 0, 1);
+                ctx.restore();
+            });
+
+            // Draw Powerups
+            powerups.forEach((pw) => {
+                const py = groundY + PATH_LAYERS[pw.layer].offsetY;
+                ctx.save();
+                ctx.translate(pw.x, py - 20);
+                ctx.fillStyle = pw.type === 'shield' ? '#3b82f6' : '#a855f7';
+                ctx.shadowColor = pw.type === 'shield' ? '#60a5fa' : '#c084fc';
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.arc(0, 0, 14, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '12px FontAwesome';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(pw.type === 'shield' ? '\uf132' : '\uf076', 0, 0);
+                ctx.restore();
+            });
+        }
+
+        function drawRider() {
+            const groundY = canvas.height * 0.55;
+            const currentBike = BIKES[selectedBikeIndex];
+
+            // Smooth Interpolation for Y Layer Switching
+            const targetYPos = groundY + PATH_LAYERS[rider.layer].offsetY + rider.y;
+            rider.targetY += (targetYPos - rider.targetY) * 0.25;
+
+            ctx.save();
+            ctx.translate(rider.x, rider.targetY - 18);
+            ctx.rotate(rider.rotation);
+
+            // Nitro Thrust Flame Effect
+            if (rider.isBoosting) {
+                ctx.fillStyle = '#f97316';
+                ctx.beginPath();
+                ctx.moveTo(-25, -2);
+                ctx.lineTo(-45 - Math.random() * 15, 0);
+                ctx.lineTo(-25, 6);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.fillStyle = '#fef08a';
+                ctx.beginPath();
+                ctx.moveTo(-25, 0);
+                ctx.lineTo(-35 - Math.random() * 10, 2);
+                ctx.lineTo(-25, 4);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // Bike Wheels with Spokes Animation
+            rider.wheelAngle += gameSpeed * 0.08;
+
+            const drawWheel = (wx, wy) => {
+                ctx.save();
+                ctx.translate(wx, wy);
+                ctx.rotate(rider.wheelAngle);
+
+                // Tire Rim
+                ctx.strokeStyle = '#334155';
+                ctx.lineWidth = 5;
+                ctx.beginPath();
+                ctx.arc(0, 0, 13, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Inner Hub
+                ctx.fillStyle = '#94a3b8';
+                ctx.beginPath();
+                ctx.arc(0, 0, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Spokes
+                ctx.strokeStyle = '#cbd5e1';
+                ctx.lineWidth = 1.5;
+                for (let i = 0; i < 4; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(-10, 0);
+                    ctx.lineTo(10, 0);
+                    ctx.rotate(Math.PI / 4);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            };
+
+            // Rear & Front Wheels
+            drawWheel(-22, 10);
+            drawWheel(22, 10);
+
+            // Bike Frame
+            ctx.strokeStyle = currentBike.color;
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(-22, 10); // Rear hub
+            ctx.lineTo(-5, -5);  // Seat frame
+            ctx.lineTo(12, -8);  // Handlebars
+            ctx.lineTo(22, 10);  // Front hub
+            ctx.stroke();
+
+            // Bike Secondary Accent Frame Line
+            ctx.strokeStyle = currentBike.secondary;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(-5, -5);
+            ctx.lineTo(8, 2);
+            ctx.lineTo(22, 10);
+            ctx.stroke();
+
+            // Rider Body Figure
+            // Legs/Pedals
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(-5, -12);
+            ctx.lineTo(-2, 0);
+            ctx.lineTo(5, 5);
+            ctx.stroke();
+
+            // Torso
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(-8, -14);
+            ctx.lineTo(5, -22);
+            ctx.stroke();
+
+            // Arms to Handlebar
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(3, -20);
+            ctx.lineTo(12, -8);
+            ctx.stroke();
+
+            // Helmet / Head
+            ctx.fillStyle = '#f59e0b';
+            ctx.beginPath();
+            ctx.arc(7, -28, 7, 0, Math.PI * 2);
+            ctx.fill();
+            // Visor
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(9, -30, 4, 5);
+
+            // Shield Aura Effect
+            if (rider.shieldActive) {
+                ctx.strokeStyle = '#3b82f6';
+                ctx.lineWidth = 3;
+                ctx.shadowColor = '#60a5fa';
+                ctx.shadowBlur = 12;
+                ctx.beginPath();
+                ctx.arc(0, -8, 38, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        function updatePhysics() {
+            if (!gameRunning || isPaused) return;
+
+            // Handle Nitro Boost
+            if ((keys['ShiftLeft'] || keys['ShiftRight'] || touchState.nitro) && rider.nitro > 0) {
+                rider.isBoosting = true;
+                gameSpeed = baseSpeed * 1.7;
+                rider.nitro = Math.max(0, rider.nitro - 0.6);
+                synth.playNitro();
+                createParticle(rider.x - 20, rider.targetY, 'nitro');
+            } else {
+                rider.isBoosting = false;
+                gameSpeed = baseSpeed;
+                if (rider.nitro < 100) rider.nitro += 0.15; // Slowly recharge nitro
+            }
+
+            // Update Nitro UI
+            document.getElementById('nitroBar').style.width = `${rider.nitro}%`;
+            document.getElementById('nitroPct').innerText = `${Math.floor(rider.nitro)}%`;
+
+            // Update Jump Physics
+            if (rider.isJumping) {
+                rider.y += rider.vy;
+                rider.vy += 0.8; // Gravity
+
+                // Slight bike tilt back in air
+                rider.rotation = -0.15;
+
+                // Landed back on track
+                if (rider.y >= 0) {
+                    rider.y = 0;
+                    rider.vy = 0;
+                    rider.isJumping = false;
+                    rider.rotation = 0;
+                }
+            }
+
+            // Spawn Particles behind back tire when on ground
+            if (!rider.isJumping && Math.random() < 0.4) {
+                const currentBiome = BIOMES[currentBiomeIndex];
+                createParticle(rider.x - 22, rider.targetY, currentBiome.particleType);
+            }
+
+            // Distance & Score progression
+            totalDistance += Math.floor(gameSpeed * 0.1);
+            currentScore += Math.floor(gameSpeed * 0.2);
+
+            // Update Biome Progress
+            const currentBiome = BIOMES[currentBiomeIndex];
+            const biomeDist = totalDistance % currentBiome.length;
+            document.getElementById('biomeLabel').innerText = currentBiome.name;
+            document.getElementById('biomeDist').innerText = `${Math.floor(biomeDist)} / ${currentBiome.length}m`;
+            document.getElementById('biomeProgressBar').style.width = `${(biomeDist / currentBiome.length) * 100}%`;
+            document.getElementById('distVal').innerText = totalDistance;
+            document.getElementById('scoreVal').innerText = currentScore;
+            document.getElementById('speedVal').innerText = `${Math.floor(gameSpeed * 14)} KM/H`;
+
+            // Biome Switch Check
+            const newBiomeIndex = Math.floor((totalDistance / 1000) % BIOMES.length);
+            if (newBiomeIndex !== currentBiomeIndex) {
+                currentBiomeIndex = newBiomeIndex;
+                showBanner(`ENTERING ${BIOMES[currentBiomeIndex].name.toUpperCase()}`);
+            }
+
+            // Move camera
+            cameraX += gameSpeed;
+
+            // Update audio pitch
+            synth.updateEnginePitch(gameSpeed / 15);
+
+            // Spawn objects
+            spawnWorldObjects();
+
+            // Update & Check Ramps
+            rampNodes.forEach((ramp) => {
+                ramp.x -= gameSpeed;
+                if (ramp.layer === rider.layer && Math.abs(ramp.x - rider.x) < 30 && !rider.isJumping) {
+                    rider.vy = -16;
+                    rider.isJumping = true;
+                    // Automatically launch to upper layer if available!
+                    if (rider.layer > 0) switchLayer(-1);
+                    showTrickBanner("RAMP LAUNCH +150!");
+                    synth.playJump();
+                }
+            });
+            rampNodes = rampNodes.filter(r => r.x > -100);
+
+            // Update & Check Obstacle Collisions
+            obstacles.forEach((obs) => {
+                obs.x -= gameSpeed;
+
+                // Collision Detection Box
+                if (obs.layer === rider.layer && !rider.isJumping) {
+                    if (rider.x + 20 > obs.x && rider.x - 20 < obs.x + obs.width) {
+                        if (rider.shieldActive) {
+                            rider.shieldActive = false;
+                            obs.x = -200; // Destroy obstacle
+                            showTrickBanner("SHIELD ABSORBED!");
+                        } else {
+                            gameOver();
+                        }
+                    }
+                }
+            });
+            obstacles = obstacles.filter(o => o.x > -100);
+
+            // Update & Check Coin Pickups
+            coinItems.forEach((coin) => {
+                coin.x -= gameSpeed;
+
+                // Magnet Attract Effect
+                if (rider.magnetTimer > 0 && !coin.collected) {
+                    const dx = rider.x - coin.x;
+                    const dy = rider.targetY - (canvas.height * 0.55 + PATH_LAYERS[coin.layer].offsetY);
+                    const dist = Math.hypot(dx, dy);
+                    if (dist < 180) {
+                        coin.x += dx * 0.15;
+                    }
+                }
+
+                if (!coin.collected && coin.layer === rider.layer) {
+                    if (Math.abs(coin.x - rider.x) < 25 && Math.abs((rider.targetY - canvas.height * 0.55) - PATH_LAYERS[coin.layer].offsetY) < 35) {
+                        coin.collected = true;
+                        coins += 1;
+                        currentScore += 50;
+                        document.getElementById('coinVal').innerText = coins;
+                        synth.playCoin();
+                    }
+                }
+            });
+            coinItems = coinItems.filter(c => c.x > -50);
+
+            // Update Powerups
+            powerups.forEach((pw) => {
+                pw.x -= gameSpeed;
+                if (pw.layer === rider.layer && Math.abs(pw.x - rider.x) < 30) {
+                    if (pw.type === 'shield') rider.shieldActive = true;
+                    if (pw.type === 'magnet') rider.magnetTimer = pw.duration;
+                    pw.x = -200;
+                    showTrickBanner(`${pw.type.toUpperCase()} POWERUP!`);
+                }
+            });
+            powerups = powerups.filter(p => p.x > -50);
+
+            if (rider.magnetTimer > 0) rider.magnetTimer--;
+
+            // Update Particles
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+            });
+            particles = particles.filter(p => p.life > 0);
+        }
+
+        function drawParticles() {
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life / p.maxLife;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            });
+        }
+
+        function blendColors(c1, c2, factor) {
+            if (factor <= 0) return c1;
+            if (factor >= 1) return c2;
+            const hexToRgb = hex => {
+                let c = hex.replace('#', '');
+                if (c.length === 3) c = c.split('').map(x => x + x).join('');
+                const num = parseInt(c, 16);
+                return [num >> 16, (num >> 8) & 255, num & 255];
+            };
+            const r1 = hexToRgb(c1);
+            const r2 = hexToRgb(c2);
+            const r = Math.round(r1[0] + factor * (r2[0] - r1[0]));
+            const g = Math.round(r1[1] + factor * (r2[1] - r1[1]));
+            const b = Math.round(r1[2] + factor * (r2[2] - r1[2]));
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        function showBanner(text) {
+            const banner = document.getElementById('biomeBanner');
+            banner.innerText = text;
+            banner.classList.remove('opacity-0', 'scale-75');
+            banner.classList.add('opacity-100', 'scale-100');
+            setTimeout(() => {
+                banner.classList.remove('opacity-100', 'scale-100');
+                banner.classList.add('opacity-0', 'scale-75');
+            }, 2500);
+        }
+
+        function showTrickBanner(text) {
+            const banner = document.getElementById('trickBanner');
+            banner.innerText = text;
+            banner.classList.remove('opacity-0', '-translate-y-4');
+            banner.classList.add('opacity-100', 'translate-y-0');
+            setTimeout(() => {
+                banner.classList.remove('opacity-100', 'translate-y-0');
+                banner.classList.add('opacity-0', '-translate-y-4');
+            }, 1200);
+        }
+
+        function renderGarage() {
+            const list = document.getElementById('bikeList');
+            document.getElementById('garageCoins').innerText = coins;
+            list.innerHTML = '';
+
+            BIKES.forEach((bike, index) => {
+                const isSelected = selectedBikeIndex === index;
+                const card = document.createElement('div');
+                card.className = `glass-panel p-4 rounded-2xl flex flex-col gap-3 border ${isSelected ? 'border-cyan-400 bg-cyan-950/30' : 'border-slate-800'}`;
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <span class="font-orbitron font-bold text-lg text-white">${bike.name}</span>
+                        <div class="w-4 h-4 rounded-full" style="background:${bike.color}"></div>
+                    </div>
+                    <div class="text-xs text-slate-400 flex flex-col gap-1">
+                        <div>Speed Multiplier: <span class="text-cyan-300 font-bold">${bike.speed}x</span></div>
+                        <div>Jump Boost: <span class="text-amber-300 font-bold">${bike.jump}x</span></div>
+                    </div>
+                    <button class="mt-2 py-2 px-4 rounded-xl font-orbitron text-xs font-bold transition ${bike.unlocked ? (isSelected ? 'bg-cyan-500 text-slate-950' : 'bg-slate-700 text-slate-200 hover:bg-slate-600') : 'bg-amber-500 text-slate-950 hover:bg-amber-400'}">
+                        ${bike.unlocked ? (isSelected ? 'SELECTED' : 'SELECT') : `UNLOCK (${bike.price} COINS)`}
+                    </button>
+                `;
+
+                const btn = card.querySelector('button');
+                btn.addEventListener('click', () => {
+                    if (bike.unlocked) {
+                        selectedBikeIndex = index;
+                        renderGarage();
+                    } else if (coins >= bike.price) {
+                        coins -= bike.price;
+                        bike.unlocked = true;
+                        selectedBikeIndex = index;
+                        localStorage.setItem('br_coins', coins);
+                        renderGarage();
+                    }
+                });
+
+                list.appendChild(card);
+            });
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawParallaxBackground();
+            drawMultiLayerRoads();
+            drawWorldObjects();
+            drawRider();
+            drawParticles();
+
+            updatePhysics();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            synth.init();
+            gameRunning = true;
+            isPaused = false;
+
+            // Reset Stats
+            totalDistance = 0;
+            currentScore = 0;
+            currentBiomeIndex = 0;
+            rider.layer = 1;
+            rider.y = 0;
+            rider.nitro = 100;
+            obstacles = [];
+            coinItems = [];
+            powerups = [];
+            particles = [];
+            rampNodes = [];
+
+            document.getElementById('startModal').classList.add('hidden');
+            document.getElementById('gameOverModal').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            if ('ontouchstart' in window) {
+                document.getElementById('touchControls').classList.remove('hidden');
+            }
+
+            updateLayerHUD();
+            showBanner(`BIOME 1: ${BIOMES[0].name.toUpperCase()}`);
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            synth.playCrash();
+
+            // Save Highscores
+            if (totalDistance > highDistance) {
+                highDistance = totalDistance;
+                localStorage.setItem('br_high_dist', highDistance);
+            }
+            localStorage.setItem('br_coins', coins);
+
+            document.getElementById('endDist').innerText = `${totalDistance} m`;
+            document.getElementById('endCoins').innerText = coins;
+            document.getElementById('endScore').innerText = currentScore;
+            document.getElementById('bestDist').innerText = `${highDistance} m`;
+
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('touchControls').classList.add('hidden');
+            document.getElementById('gameOverModal').classList.remove('hidden');
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+        }
+
+        document.getElementById('startPlayBtn').addEventListener('click', startGame);
+        document.getElementById('restartBtn').addEventListener('click', startGame);
+        document.getElementById('pauseBtn').addEventListener('click', togglePause);
+
+        document.getElementById('garageBtn').addEventListener('click', () => {
+            renderGarage();
+            document.getElementById('garageModal').classList.remove('hidden');
+        });
+        document.getElementById('closeGarageBtn').addEventListener('click', () => {
+            document.getElementById('garageModal').classList.add('hidden');
+        });
+
+        // Initialize HUD & Start Game Engine Loop
+        document.getElementById('coinVal').innerText = coins;
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
