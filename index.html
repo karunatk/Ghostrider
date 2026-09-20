@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Biome Rider: Multi-Track Velocity</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;600;700&display=swap');
+
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            background-color: #090a0f;
+            color: #ffffff;
+            overflow: hidden;
+        }
+
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+        }
+
+        .biome-glow-card {
+            transition: border-color 0.5s ease, box-shadow 0.5s ease;
+        }
+
+        .btn-action {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-action:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 0 25px rgba(59, 130, 246, 0.7);
+        }
+
+        .btn-action:active {
+            transform: translateY(1px) scale(0.98);
+        }
+
+        .btn-nitro {
+            background: linear-gradient(135deg, #f97316 0%, #dc2626 100%);
+            box-shadow: 0 0 20px rgba(249, 115, 22, 0.5);
+        }
+
+        .btn-nitro:hover {
+            box-shadow: 0 0 30px rgba(249, 115, 22, 0.8);
+        }
+
+        /* Keyframe animations for HUD effects */
+        @keyframes pulse-glow {
+            0%, 100% { filter: drop-shadow(0 0 5px rgba(234, 179, 8, 0.6)); }
+            50% { filter: drop-shadow(0 0 15px rgba(234, 179, 8, 1)); }
+        }
+
+        .glow-coin {
+            animation: pulse-glow 1.5s infinite;
+        }
+
+        /* Touch control button highlights */
+        .touch-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1.5px solid rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(4px);
+            transition: background 0.1s;
+        }
+        .touch-btn:active, .touch-btn.active {
+            background: rgba(59, 130, 246, 0.4);
+            border-color: #60a5fa;
+        }
+
+        /* Landscape Orientation Overlay rules */
+        @media (orientation: portrait) and (max-width: 1024px) {
+            #rotatePrompt {
+                display: flex !important;
+            }
+        }
+
+        /* Landscape Modal scrolling and max height safety */
+        .landscape-modal-content {
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative flex items-center justify-center bg-slate-950 overflow-hidden">
+
+    <div id="rotatePrompt" class="hidden fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-lg flex-col items-center justify-center text-center p-6 text-white">
+        <div class="w-20 h-20 rounded-3xl bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-400 text-4xl mb-4 animate-bounce">
+            <i class="fa-solid fa-mobile-screen-button rotate-90"></i>
+        </div>
+        <h2 class="text-2xl font-orbitron font-bold text-amber-400 mb-2">PLEASE ROTATE YOUR DEVICE</h2>
+        <p class="text-sm text-slate-300 max-w-xs">Biome Rider is best experienced in <span class="text-cyan-400 font-bold">Landscape Mode</span>. Turn your device horizontally for maximum velocity!</p>
+    </div>
+
+    <canvas id="gameCanvas" class="absolute inset-0 w-full h-full block z-0"></canvas>
+
+    <div id="hud" class="absolute inset-0 z-10 pointer-events-none hidden flex flex-col justify-between p-3 md:p-5">
+        <!-- Top Stats Bar - Streamlined Horizontal Layout -->
+        <div class="flex justify-between items-center w-full gap-2">
+            <!-- Left: Distance & Biome Info -->
+            <div id="biomeHudCard" class="glass-panel biome-glow-card px-3.5 py-2 rounded-2xl flex items-center gap-3 border-amber-500/40">
+                <div class="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-400 text-sm" id="biomeIconBox">
+                    <i id="biomeIcon" class="fa-solid fa-tree"></i>
+                </div>
+                <div class="flex flex-col">
+                    <span id="biomeLabel" class="font-orbitron text-xs uppercase text-amber-400 font-bold tracking-wider">Dense Jungle</span>
+                    <span id="biomeDist" class="text-[10px] text-slate-400 font-semibold">0 / 1000m</span>
+                </div>
+                <!-- Biome Progress Bar -->
+                <div class="w-20 md:w-32 bg-slate-900/80 rounded-full h-2 overflow-hidden border border-slate-700/60">
+                    <div id="biomeProgressBar" class="bg-gradient-to-r from-amber-500 to-emerald-400 h-full w-0 transition-all duration-300"></div>
+                </div>
+                <div class="text-lg md:text-xl font-orbitron font-bold text-white tracking-wide border-l border-slate-700/80 pl-3">
+                    <span id="distVal">0</span> <span class="text-[10px] font-normal text-slate-400">m</span>
+                </div>
+            </div>
+
+            <!-- Middle: Score & Multiplier -->
+            <div class="glass-panel px-4 py-2 rounded-2xl flex items-center gap-3">
+                <div class="flex flex-col items-center">
+                    <span class="text-[9px] text-slate-400 font-bold uppercase tracking-widest">SCORE</span>
+                    <span id="scoreVal" class="text-xl md:text-2xl font-orbitron font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-300">0</span>
+                </div>
+                <div id="multiplierTag" class="px-2 py-0.5 rounded-lg bg-amber-500/20 border border-amber-400/50 text-[10px] font-orbitron font-bold text-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.3)]">
+                    <span id="multiplierVal">1x</span>
+                </div>
+            </div>
+
+            <!-- Right: Coins & Active Powerups -->
+            <div class="glass-panel px-3.5 py-2 rounded-2xl flex items-center gap-3">
+                <div class="flex items-center gap-2">
+                    <div class="w-7 h-7 rounded-full bg-amber-500/20 border border-amber-400/40 flex items-center justify-center">
+                        <i class="fa-solid fa-coins text-amber-400 text-xs glow-coin"></i>
+                    </div>
+                    <span id="coinVal" class="text-lg font-orbitron font-bold text-amber-300">0</span>
+                </div>
+                <div id="powerupStatus" class="flex gap-1">
+                    <!-- Powerup icons injected dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Middle Overlay Messages (Biome Switch, Ramp Trick) -->
+        <div class="self-center text-center pointer-events-none">
+            <div id="biomeBanner" class="text-2xl md:text-4xl font-orbitron font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-orange-400 to-red-500 opacity-0 transition-all duration-700 transform scale-75 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)]">
+                ENTERING CANYON MOUNTAINS
+            </div>
+            <div id="trickBanner" class="text-lg md:text-xl font-orbitron font-bold text-cyan-300 opacity-0 transition-all duration-300 transform -translate-y-4">
+                AIR TIME +200!
+            </div>
+        </div>
+
+        <!-- Bottom Controls & Cockpit Info Bar for Landscape -->
+        <div class="flex justify-between items-end w-full">
+            <!-- Left Cockpit: Speedometer & Layer Indicator -->
+            <div class="glass-panel p-2.5 rounded-2xl flex items-center gap-4">
+                <!-- Speedometer & Nitro Bar -->
+                <div class="flex flex-col gap-1 w-28 md:w-36">
+                    <div class="flex justify-between text-[10px] font-bold">
+                        <span class="text-slate-300 flex items-center gap-1"><i class="fa-solid fa-gauge-high text-cyan-400"></i> SPEED</span>
+                        <span id="speedVal" class="text-cyan-400 font-orbitron">0 KM/H</span>
+                    </div>
+                    <!-- Nitro Bar -->
+                    <div class="w-full bg-slate-900/90 rounded-full h-2 p-0.5 border border-slate-700/70">
+                        <div id="nitroBar" class="bg-gradient-to-r from-amber-500 via-orange-500 to-red-600 h-full rounded-full w-full transition-all duration-100 shadow-[0_0_8px_rgba(249,115,22,0.6)]"></div>
+                    </div>
+                </div>
+
+                <!-- Layer Indicator Dots -->
+                <div class="flex flex-col items-center gap-1 border-l border-slate-700/80 pl-3">
+                    <span class="text-[9px] text-slate-400 font-semibold tracking-wider uppercase">PATH LAYER</span>
+                    <div class="flex gap-1.5" id="layerDots">
+                        <span class="w-2.5 h-2.5 rounded-full bg-slate-700 border border-slate-600" id="dotUpper" title="Upper Cantilever Path"></span>
+                        <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 border border-cyan-300 shadow-[0_0_8px_#38bdf8]" id="dotMain" title="Main Track"></span>
+                        <span class="w-2.5 h-2.5 rounded-full bg-slate-700 border border-slate-600" id="dotLower" title="Lower Tunnel Path"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- On-Screen Pause Button -->
+            <button id="pauseBtn" class="glass-panel p-3 rounded-2xl pointer-events-auto hover:bg-slate-700/50 active:scale-95 transition flex items-center justify-center">
+                <i class="fa-solid fa-pause text-base text-white"></i>
+            </button>
+        </div>
+    </div>
+
+    <div id="touchControls" class="absolute inset-0 z-20 pointer-events-none hidden flex justify-between items-end p-3 md:p-5">
+        <!-- Left Thumb: D-Pad Layer Switch & Jump -->
+        <div class="flex gap-2 pointer-events-auto items-end">
+            <div class="flex flex-col gap-2">
+                <button id="btnUp" class="touch-btn w-14 h-14 md:w-16 md:h-16 rounded-2xl flex items-center justify-center text-white text-xl active:bg-blue-600/50">
+                    <i class="fa-solid fa-chevron-up"></i>
+                </button>
+                <button id="btnDown" class="touch-btn w-14 h-14 md:w-16 md:h-16 rounded-2xl flex items-center justify-center text-white text-xl active:bg-blue-600/50">
+                    <i class="fa-solid fa-chevron-down"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Right Thumb: Action Buttons (Nitro & Jump) -->
+        <div class="flex gap-3 pointer-events-auto items-end">
+            <button id="btnNitro" class="touch-btn btn-nitro w-16 h-16 md:w-20 md:h-20 rounded-2xl flex flex-col items-center justify-center text-white font-orbitron font-bold text-[10px] gap-0.5 active:scale-95">
+                <i class="fa-solid fa-fire text-xl md:text-2xl"></i>
+                NITRO
+            </button>
+            <button id="btnJump" class="touch-btn w-16 h-16 md:w-20 md:h-20 rounded-2xl flex flex-col items-center justify-center text-white font-orbitron font-bold text-[10px] gap-0.5 active:scale-95 bg-blue-600/60 border-blue-400">
+                <i class="fa-solid fa-angles-up text-xl md:text-2xl"></i>
+                JUMP
+            </button>
+        </div>
+    </div>
+
+    <div id="startModal" class="absolute z-30 inset-0 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+        <div class="glass-panel max-w-2xl w-full p-5 md:p-6 rounded-3xl flex flex-col gap-4 relative overflow-hidden border border-slate-700/80 landscape-modal-content">
+            <!-- Background Glow Decor -->
+            <div class="absolute -top-24 -left-24 w-48 h-48 bg-blue-500/20 rounded-full blur-3xl"></div>
+            <div class="absolute -bottom-24 -right-24 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl"></div>
+
+            <!-- Game Title Banner -->
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <div class="flex flex-col">
+                    <div class="flex items-center gap-2 text-amber-400 font-orbitron text-[10px] tracking-widest uppercase">
+                        <i class="fa-solid fa-fire-flame-curved"></i> Ghost Rider Arcade Edition
+                    </div>
+                    <h1 class="text-2xl md:text-4xl font-orbitron font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-500 to-cyan-400 tracking-tight">
+                        BIOME RIDER
+                    </h1>
+                </div>
+                <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 rounded-xl border border-slate-700 text-xs font-orbitron font-bold text-amber-400">
+                    <i class="fa-solid fa-display"></i> LANDSCAPE MODE
+                </div>
+            </div>
+
+            <!-- Key Features & Controls Widescreen Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <!-- Left Column: Biomes & Track Features -->
+                <div class="bg-slate-900/60 p-3 rounded-2xl border border-slate-800 flex flex-col gap-2">
+                    <span class="font-orbitron font-bold text-cyan-400 text-xs uppercase tracking-wider"><i class="fa-solid fa-layer-group mr-1"></i> Multi-Track Terrain</span>
+                    <ul class="space-y-1.5 text-slate-300 text-[11px]">
+                        <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400 text-[10px]"></i> 3 Vertical Road Layers (Upper, Main, Lower)</li>
+                        <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400 text-[10px]"></i> 5 Biomes with Seamless Blending</li>
+                        <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400 text-[10px]"></i> Fiery Ghost Rider Skull & Wheels</li>
+                    </ul>
+                </div>
+
+                <!-- Right Column: Key Bindings -->
+                <div class="bg-slate-900/60 p-3 rounded-2xl border border-slate-800 flex flex-col justify-between gap-2 text-[11px]">
+                    <span class="font-orbitron font-bold text-amber-400 text-xs uppercase tracking-wider"><i class="fa-solid fa-gamepad mr-1"></i> Keyboard Controls</span>
+                    <div class="grid grid-cols-2 gap-1.5 text-slate-300">
+                        <div><kbd class="bg-slate-700 px-1.5 py-0.5 rounded font-mono text-[10px]">W / ↑</kbd> Move Up</div>
+                        <div><kbd class="bg-slate-700 px-1.5 py-0.5 rounded font-mono text-[10px]">S / ↓</kbd> Move Down</div>
+                        <div><kbd class="bg-slate-700 px-1.5 py-0.5 rounded font-mono text-[10px]">SPACE</kbd> Jump</div>
+                        <div><kbd class="bg-slate-700 px-1.5 py-0.5 rounded font-mono text-[10px]">SHIFT</kbd> Nitro Boost</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-3 w-full pt-1">
+                <button id="garageBtn" class="flex-1 py-3 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-600 font-orbitron font-bold text-xs md:text-sm text-slate-200 transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-warehouse text-amber-400"></i> GARAGE
+                </button>
+                <button id="startPlayBtn" class="flex-[2] btn-action py-3 px-6 rounded-2xl font-orbitron font-bold text-sm md:text-base text-white flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-play"></i> START RIDE
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="garageModal" class="absolute z-30 inset-0 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md hidden">
+        <div class="glass-panel max-w-3xl w-full p-5 rounded-3xl flex flex-col gap-4 border border-slate-700 landscape-modal-content">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-warehouse text-xl text-amber-400"></i>
+                    <h2 class="text-xl font-orbitron font-bold text-white">BIKE GARAGE</h2>
+                </div>
+                <div class="flex items-center gap-2 text-amber-400 font-orbitron font-bold">
+                    <i class="fa-solid fa-coins"></i>
+                    <span id="garageCoins">0</span>
+                </div>
+            </div>
+
+            <!-- Bike Selection Grid for Landscape -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="bikeList">
+                <!-- Bike items dynamically injected by JS -->
+            </div>
+
+            <button id="closeGarageBtn" class="self-end px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 font-orbitron font-semibold text-xs text-slate-300">
+                BACK TO MENU
+            </button>
+        </div>
+    </div>
+
+    <script>
+        class AudioSynth {
+            constructor() {
+                this.ctx = null;
+                this.engineOsc = null;
+                this.engineGain = null;
+                this.isMuted = false;
+            }
+
+            init() {
+                if (this.ctx) return;
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                this.ctx = new AudioCtx();
+                this.startEngineSound();
+            }
+
+            startEngineSound() {
+                if (!this.ctx) return;
+                try {
+                    this.engineOsc = this.ctx.createOscillator();
+                    this.engineGain = this.ctx.createGain();
+                    
+                    this.engineOsc.type = 'sawtooth';
+                    this.engineOsc.frequency.setValueAtTime(60, this.ctx.currentTime);
+                    
+                    this.engineGain.gain.setValueAtTime(0.02, this.ctx.currentTime);
+                    
+                    this.engineOsc.connect(this.engineGain);
+                    this.engineGain.connect(this.ctx.destination);
+                    this.engineOsc.start();
+                } catch(e) {}
+            }
+
+            updateEnginePitch(speedRatio) {
+                if (!this.ctx || !this.engineOsc) return;
+                const targetFreq = 50 + speedRatio * 180;
+                this.engineOsc.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 0.1);
+            }
+
+            playCoin() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(987.77, this.ctx.currentTime); // B5
+                osc.frequency.setValueAtTime(1318.51, this.ctx.currentTime + 0.08); // E6
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.25);
+            }
+
+            playJump() {
+                if (!this.ctx) return;
+  
